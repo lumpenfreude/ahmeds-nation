@@ -1,0 +1,82 @@
+services:
+
+  webserver:
+    image: nginx:latest
+    networks:
+      frontend:
+        aliases:
+          - webserver
+    ports:
+      - 80:80
+      - 443:443
+    restart: always
+    volumes:
+      - /srv/site/data/nginx/conf/:/etc/nginx/conf.d/:ro
+      - /srv/site/data/certbot/www:/var/www/certbot/:ro
+      - /srv/site/data/certbot/conf/:/etc/nginx/ssl/:ro
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:latest
+    networks:
+      frontend:
+        aliases:
+          - certbot
+    volumes:
+      - /srv/site/data/certbot/www/:/var/www/certbot/:rw
+      - /srv/site/data/certbot/conf/:/etc/letsencrypt/:rw
+      - /srv/site/data/certbot/logs/:/var/log/letsencrypt/:rw
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    restart: unless-stopped
+  
+  ghost:
+    image: ghost:6-alpine
+    depends_on:
+      - mysql
+      - webserver
+      - certbot
+    networks:
+      backend:
+        aliases:
+          - ghost
+      frontend:
+        aliases:
+          - ghost
+    environment:
+      url: https://ahmedsarsour.com
+    volumes:
+      - /srv/site/data/ghost/content:/var/lib/ghost/content
+      - /srv/site/data/config.production.json:/var/lib/ghost/config.production.json
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    networks:
+      backend:
+        ipv4_address: 192.168.1.10
+        aliases:
+          - mysql
+    volumes:
+      - /srv/site/data/sql:/var/lib/mysql
+    env_file:
+      - /srv/site/.env
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    restart: unless-stopped
+
+networks:
+  frontend:
+    external: true
+  backend:
+    external: true
